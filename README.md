@@ -1,5 +1,9 @@
 # EchoTrace Live
 
+[![EchoTrace Live demo: Neon, Rainbow Mandala, Fire Vortex and Ghost Time effects](demo/preview.jpg)](demo/echotrace-demo.mp4)
+
+**[▶ Watch the 55-second demo](demo/echotrace-demo.mp4)**: all five colour modes, three presets, and the audio-reactive rings. The demo uses a computer-generated scene (a light wand, a hand shape, and a bouncing ball) run through the real EchoTrace effects code, so no one appears on camera.
+
 Paint neon light in the air with your webcam. Moving hands, faces, and objects leave glowing echoes that linger and slowly fade. Five live modes combine motion detection, colorful trails, soft bloom, futuristic edges, and a mild vignette.
 
 Everything runs on your laptop using Python, OpenCV, and NumPy. Optional MediaPipe Hands adds gestures and sounddevice adds microphone-reactive effects. No cloud, servers, accounts, API keys, or GPU required. Installation needs internet to download dependencies; running afterward does not. The hand model is included in `models/hand_landmarker.task`. No video is saved unless you press **S** or **V**. Recordings have no audio; the microphone is used only for live analysis, and only after pressing A. Gestures and audio start OFF.
@@ -209,6 +213,14 @@ On macOS, MediaPipe's native package can initialize graphics services even with 
 - If sounddevice cannot import, run `pip install "sounddevice>=0.5,<0.6"`. Errors are shown without stopping the webcam. Toggle A off to release the microphone.
 
 Implementation references: [MediaPipe Hand Landmarker Python guide](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/python) and [sounddevice InputStream API](https://python-sounddevice.readthedocs.io/en/latest/api/streams.html).
+
+## Demo video
+
+`demo/make_demo.py` renders `demo/echotrace-demo.mp4` without a webcam. It draws a synthetic room scene, feeds each frame through `EchoTraceAgent.process_frame` on a simulated 30 FPS clock, and adds captions. The audio section uses a generated test beat instead of the microphone. It needs `ffmpeg` with H.264 support (on macOS: `brew install ffmpeg`):
+
+```bash
+python demo/make_demo.py
+```
 
 ## Hardware-free checks
 
