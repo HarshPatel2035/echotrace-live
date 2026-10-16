@@ -56,6 +56,24 @@ On Debian/Ubuntu, missing virtual-environment or desktop libraries can be instal
 
 Focus the **EchoTrace Live** window and move to create trails. Quit before closing your terminal. Activate the environment again when returning to the project; installation is only needed once.
 
+### Command-line options
+
+All options are optional; `python main.py --help` lists them.
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `--camera N` | 0 | Webcam index; try 1, 2 … on computers with several cameras |
+| `--width W --height H` | 1280×720 | Requested capture size; `0` keeps the camera's own default |
+| `--fps N` | 30 | Requested camera frame rate; `0` keeps the camera default |
+| `--work-width N` | 640 | Maximum width for effect processing; 480 is faster on slow laptops |
+| `--preset 1-5` | none | Start with one of the visual presets below |
+| `--no-mirror` | mirrored | Start without the horizontal mirror |
+| `--hud-in-captures` | off | Include the HUD in snapshots and recordings (also toggled with I) |
+| `--flicker-limit F` | 0.45 | Ignore frames where more than this fraction of the picture changes at once; `0` disables |
+| `--output-dir DIR` | `captures/` | Where snapshots and recordings are saved |
+
+Example for a slower laptop with a second camera: `python main.py --camera 1 --width 640 --height 480 --work-width 480 --preset 2`
+
 ## Controls
 
 | Key | Action |
@@ -69,7 +87,7 @@ Focus the **EchoTrace Live** window and move to create trails. Quit before closi
 | [ / ] | Decrease / increase glow |
 | M | Toggle horizontal mirror and clear trails |
 | Space | Pause / resume effects |
-| H | Show / hide help |
+| H | Show / hide key help (hidden at start) |
 | G | Enable / disable MediaPipe hand gestures |
 | A | Enable / disable default microphone audio response |
 | P | Enable / disable motion particles |
@@ -78,8 +96,10 @@ Focus the **EchoTrace Live** window and move to create trails. Quit before closi
 | F | Toggle frozen effect image |
 | 1–5 | Apply a visual preset and clear the canvas |
 | Z | Hide / show the entire HUD |
+| O | Hands-only painting: only tracked hands leave trails (starts gestures if needed) |
+| I | Include / exclude the HUD in snapshots and recordings (excluded by default) |
 
-The `=` key also increases retention, so you do not need Shift on a standard keyboard. Letter controls accept upper and lower case. Default decay is **0.960** and glow is **1.4**. Higher decay means **slower fading / longer trails**; it ranges from 0.800 to 0.995. Glow ranges from 0.0 to 4.0. Pausing freezes the picture and trails while keeping controls active and the camera connection fresh. During a pause, recording continues with the frozen image. Reset takes effect on the next processed frame after resume. Switching modes preserves existing trails for mixed-color transitions; press R for a clean start. Space pause, F freeze, and fist freeze are independent: release all active holds to resume. Hand detection continues during every freeze so releasing a fist resumes automatically.
+The `=` key also increases retention, so you do not need Shift on a standard keyboard. Letter controls accept upper and lower case. The HUD starts compact (status only); press H for the full key list. Default decay is **0.960** and glow is **1.4**. Higher decay means **slower fading / longer trails**; it ranges from 0.800 to 0.995. Glow ranges from 0.0 to 4.0. Pausing freezes the picture and trails while keeping controls active and the camera connection fresh. During a pause, recording continues with the frozen image. Reset takes effect on the next processed frame after resume. Switching modes preserves existing trails for mixed-color transitions; press R for a clean start. Space pause, F freeze, and fist freeze are independent: release all active holds to resume. Hand detection continues during every freeze so releasing a fist resumes automatically.
 
 ## Hand gestures
 
@@ -90,6 +110,8 @@ Press G and show your hand to the camera. MediaPipe's CPU Hand Landmarker uses t
 - **Fist (four fingers curled):** hold to freeze; open your hand or remove it to resume. Tracking loss also releases the gesture freeze.
 - **Two visible hands:** temporarily enable six-way kaleidoscope if keyboard symmetry is off; otherwise keep the symmetry selected with K. Remove one hand to restore the keyboard setting.
 - **Index finger extended, other fingers curled:** draw a neon line from the fingertip. Curl the index or remove the hand to lift the pen. Each hand has its own pen path.
+
+**Hands-only painting (O):** normally anything that moves paints, so small head or body movements light up your whole outline. Press O to paint only inside the tracked hand areas (a padded outline around each detected hand). It turns gestures on automatically if they are off, and turns off again when you press G to stop gestures. When no hand has been seen for 0.6 seconds nothing paints, so trails fade out cleanly. The gestures above stay active in this mode, so a fist still freezes.
 
 Pinch takes priority over palm/fist recognition. Mode/reset actions require two consecutive classifications plus an 0.8-second cooldown to avoid repeats. Gestures are geometric heuristics, so face the palm toward the webcam, use good lighting, and avoid overlapping hands. Inference uses a single isolated local process at up to 12 Hz and 320-pixel input width; no inference queue can build up. Native tracker failures disable gestures without closing the main app. Toggle G off to release the tracker. First enablement can take a few seconds while dependencies/model initialize. The file `models/README.md` records the model source.
 
@@ -129,15 +151,15 @@ For light-painting, try a darker background with a well-lit hand or a small flas
 
 ## Captures
 
-The app creates `captures/` **beside `main.py`** when you first save or record. PNGs include the visible HUD. Videos use MP4 with the `mp4v` codec first, then automatically try XVID/AVI and MJPG/AVI if a writer cannot open. Filenames include timestamps to avoid overwriting captures. Press V again or quit normally to finalize the file. Output codecs depend on your local OpenCV build; recordings are paced at a fixed rate based on measured FPS at start (5–30 FPS). Very long camera or disk stalls can shorten playback relative to elapsed wall time. OpenCV cannot reliably report every later disk/encoder failure, so check your first short recording before a long session. Odd frame dimensions are padded by one pixel for codec compatibility.
+The app creates `captures/` **beside `main.py`** when you first save or record. Snapshots and recordings contain only the effect image without the HUD; press I (or start with `--hud-in-captures`) to include it. Videos use MP4 with the `mp4v` codec first, then automatically try XVID/AVI and MJPG/AVI if a writer cannot open. Filenames include timestamps to avoid overwriting captures. Press V again or quit normally to finalize the file. Output codecs depend on your local OpenCV build; recordings are paced at a fixed rate based on measured FPS at start (5–30 FPS). Very long camera or disk stalls can shorten playback relative to elapsed wall time. OpenCV cannot reliably report every later disk/encoder failure, so check your first short recording before a long session. Odd frame dimensions are padded by one pixel for codec compatibility.
 
 ## Performance and implementation
 
-The camera receives requests for **1280×720 at 30 FPS**. If unsupported, the app uses whatever dimensions the camera actually returns without stretching to 720p. Preview is mirrored by default. Motion detection, persistent floating-point canvas, glow, edges, and vignette run at up to 640 pixels wide, then the result is enlarged to the capture dimensions. All pixel work uses vectorized NumPy/OpenCV operations. The display loop targets 30 FPS; hardware, webcam exposure, and recording speed affect actual FPS.
+The camera receives requests for **1280×720 at 30 FPS**. If unsupported, the app uses whatever dimensions the camera actually returns without stretching to 720p. Preview is mirrored by default. Motion detection, the persistent floating-point canvas, glow, and edges run at up to 640 pixels wide (`--work-width`). Only that light overlay is enlarged; it is blended onto the full-resolution camera image so your face and the room stay sharp. Camera reading, effects, and window display each take roughly 15 ms on a laptop, so they run on separate threads: a camera thread keeps only the newest frame, an effects thread processes it (and applies key presses between frames), and the main thread only shows finished frames, which macOS requires. This keeps up with a 30 FPS camera; the HUD shows the effects rate, and a frame reaches the screen about one frame later. All pixel work uses vectorized NumPy/OpenCV operations. The display loop targets 30 FPS; hardware, webcam exposure, and recording speed affect actual FPS.
 
-Each frame is blurred and differenced against the previous frame. A threshold and small morphological filter suppress noise. Motion is colorized and blurred into a glow, then merged into a time-decaying canvas with lighten/max blending. Subtle Canny edges and a vignette complete the look. Decay is adjusted for elapsed time so trail duration stays consistent at different frame rates.
+Each frame is blurred and differenced against the previous frame. A threshold and small morphological filter suppress noise. If more than 45% of the picture changes at once (auto-exposure, lights switching, a bumped camera) that frame's motion is ignored instead of flooding the canvas, and the HUD says so. In Neon mode the unthresholded difference sets each pixel's colour, so slower or fainter motion glows cyan and faster motion glows magenta. Motion is colorized and blurred into a glow, then merged into a time-decaying canvas with lighten/max blending. Subtle Canny edges and a vignette complete the look. Decay is adjusted for elapsed time so trail duration stays consistent at different frame rates.
 
-The `EchoTraceAgent` class owns capture, effects, gesture inference, audio analysis, particles, symmetry, time-slice history, HUD, controls, and cleanup. The small hand model is loaded only after G. MediaPipe and sounddevice imports are lazy: if installation/device access fails, the affected feature reports a message and the core webcam app continues.
+`main.py` parses the command-line options and starts the app. The code lives in the `echotrace/` package: `app.py` (the `EchoTraceAgent` class: camera, frame pipeline, keys, main loop), `effects.py` (motion, colour modes, glow, particles, symmetry, slit-scan), `camera.py` (background frame reader), `gestures.py` (hand tracker worker, gestures, hands-only mask), `audio.py` (microphone analysis), `capture.py` (snapshots and recording), `hud.py` (on-screen panel), and `paths.py` (project folders). The small hand model is loaded only after G. MediaPipe and sounddevice imports are lazy: if installation/device access fails, the affected feature reports a message and the core webcam app continues.
 
 ## Troubleshooting
 
@@ -145,13 +167,13 @@ The `EchoTraceAgent` class owns capture, effects, gesture inference, audio analy
 
 - **Windows:** Settings → Privacy & security → Camera: enable camera access and access for desktop apps. Close Camera, Teams, Zoom, browser camera tabs, and other capture programs. The app tries `cv2.VideoCapture(0)` first and DirectShow on Windows if opening fails.
 - **macOS:** System Settings → Privacy & Security → Camera: allow the terminal or app launching Python (Terminal, iTerm, your IDE, or Codex). Restart that app after changing permissions. Accept the camera permission prompt if shown.
-- **Linux:** check `/dev/video0`, desktop camera permissions, and user access to the camera device. Close competing capture apps. The default camera index is 0; on a computer with several cameras, change the `0` in `open_camera()` to the intended local device index (both occurrences on Windows).
+- **Linux:** check `/dev/video0`, desktop camera permissions, and user access to the camera device. Close competing capture apps. The default camera index is 0; on a computer with several cameras, start with `python main.py --camera 1` (or 2, 3 …).
 
 ### Black screen or no frames
 
 - Remove the camera cover, check lighting, and test the webcam in your operating system's camera app, then close that app.
 - Check privacy permissions and reconnect external webcams. Thirty consecutive failed reads stop the app with a clear error.
-- Some cameras reject resolution requests. Remove the width/height `capture.set(...)` calls in `open_camera()` to use the camera's default capture configuration.
+- Some cameras reject resolution requests. Start with `python main.py --width 0 --height 0 --fps 0` to use the camera's default capture configuration.
 - A dark background without movement produces little glow by design. Move a well-lit hand, try Rainbow, increase glow with `]`, and clear stale trails with R.
 - If the window fails to appear, use the desktop `opencv-contrib-python` wheel, not a headless wheel. In the activated environment, follow the existing-installation repair commands above. Never install both OpenCV wheel families together.
 
@@ -160,7 +182,8 @@ The `EchoTraceAgent` class owns capture, effects, gesture inference, audio analy
 - Add lighting: long auto-exposure can reduce camera FPS. Close other camera apps and CPU-intensive programs.
 - Lower glow with `[`, stop recording with V, and try Echo instead of Neon.
 - Disable gestures (G) and audio (A) if they compete for CPU. Turn off particles (P), symmetry (K until OFF), or slit-scan (T) individually. Frame processing targets 30 FPS, but enabling every feature and recording simultaneously depends on your laptop.
-- For slower hardware, change the requested camera resolution to 640×480 in `open_camera()`. To further reduce effect computation, change the working-width limit from 640 to 480 in `prepare_buffers()`.
+- For slower hardware, run `python main.py --width 640 --height 480 --work-width 480`.
+- In dim rooms many webcams lower their own frame rate (often to 15 FPS) to get longer exposures. More light usually raises the FPS shown in the HUD.
 - A reported 30 FPS is a target, not a guarantee. USB bandwidth, camera drivers, desktop display, and disk speed matter.
 
 ### Snapshots or recording fail
@@ -195,4 +218,4 @@ In the activated environment:
 python -m unittest -v test_effects.py
 ```
 
-These tests cover motion/decay across five modes, gesture classification and debounce, freeze/resume, bass/treble analysis and beats, particle lifecycles, kaleidoscope symmetry, slit-scan history, presets/HUD, optional dependency and worker failures, PNG saving, and video decode. They do not access the webcam or microphone. Actual hand-pose accuracy and end-to-end FPS depend on local devices and lighting.
+These tests cover motion/decay across five modes, gesture classification and debounce, freeze/resume, bass/treble analysis and beats, particle lifecycles, kaleidoscope symmetry, slit-scan history, presets/HUD, optional dependency and worker failures, PNG saving, video decode, Neon speed colours, the whole-frame flicker guard, full-resolution output, hands-only painting, HUD-free captures, and command-line options. They do not access the webcam or microphone. Actual hand-pose accuracy and end-to-end FPS depend on local devices and lighting.

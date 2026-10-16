@@ -1,4 +1,5 @@
 """Hardware-free regression checks: python -m unittest -v test_effects.py."""
+import threading
 import time
 import unittest
 from concurrent.futures import Future
@@ -10,7 +11,8 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
-from main import EchoTraceAgent
+from echotrace.camera import FrameSource
+from main import EchoTraceAgent, build_agent, parse_args
 
 
 def hand(gesture):
@@ -231,6 +233,131 @@ class EffectsTests(unittest.TestCase):
             video.release()
             self.assertTrue(ok)
             self.assertEqual(decoded.shape, self.frame.shape)
+
+    def test_neon_colour_follows_motion_speed(self):
+        self.agent.mode_index = self.agent.MODES.index("Neon")
+        self.agent.mirror = False
+        self.agent.glow = 0  # glow saturates block interiors to white; compare raw colour
+        self.agent.process_frame(self.frame)
+        moving = self.frame.copy()
+        moving[100:200, 100:200] = 40    # faint change: slow / low-contrast motion
+        moving[100:200, 400:500] = 255   # strong change: fast / high-contrast motion
+        self.agent.process_frame(moving)
+        canvas = self.agent.canvas
+        slow, fast = canvas[150, 150], canvas[150, 450]
+        # BGR: cyan has a high green channel, magenta a high red channel.
+        self.assertGreater(slow[1], slow[2])
+        self.assertGreater(fast[2], fast[1])
+
+    def test_whole_frame_change_is_ignored(self):
+        self.agent.process_frame(self.frame)
+        self.agent.process_frame(np.full_like(self.frame, 200))
+        self.assertEqual(self.agent.canvas.max(), 0)
+        self.agent.flicker_limit = 0
+        self.agent.process_frame(self.frame)
+        self.assertGreater(self.agent.canvas.max(), 0)
+
+    def test_camera_image_keeps_full_resolution(self):
+        agent = EchoTraceAgent(mirror=False)
+        frame = np.zeros((720, 1280, 3), np.uint8)
+        frame[:, ::2] = 255  # one-pixel stripes vanish if the base image is downscaled
+        out = agent.process_frame(frame)
+        self.assertEqual(out.shape, frame.shape)
+        center = out[360, 600:680, 1].astype(int)
+        self.assertGreater(np.abs(np.diff(center)).min(), 80)
+
+    def test_hands_only_limits_painting_to_tracked_hands(self):
+        self.agent.gestures_enabled = True
+        self.agent.hands_only = True
+        self.agent.process_frame(self.frame)
+        self.agent.consume_hands(result("neutral"), time.perf_counter())
+        self.assertIsNotNone(self.agent.hand_mask)
+        moving = self.frame.copy()
+        moving[200:300, 40:120] = 255     # far from the hand: ignored
+        moving[230:330, 270:370] = 255    # on the hand: painted
+        self.agent.process_frame(moving)
+        canvas = self.agent.canvas.max(axis=2)
+        self.assertEqual(canvas[250, 80], 0)
+        self.assertGreater(canvas[280, 320], 0)
+        self.agent.close_gestures()
+        self.assertFalse(self.agent.hands_only)
+
+    def test_hands_only_without_mediapipe_stays_off(self):
+        with patch.dict("sys.modules", {"mediapipe": None}):
+            self.agent.handle_key(ord("O"))
+        self.assertFalse(self.agent.hands_only)
+
+    def test_snapshots_exclude_hud_by_default(self):
+        clean = self.agent.process_frame(self.frame)
+        self.agent.show_help = True
+        self.agent.latest_clean = clean
+        self.agent.latest_result = self.agent.draw_hud(clean)
+        self.assertIs(self.agent.capture_frame(), clean)
+        self.agent.handle_key(ord("I"))
+        self.assertIs(self.agent.capture_frame(), self.agent.latest_result)
+        self.assertFalse(np.array_equal(self.agent.latest_result, clean))
+
+    def test_help_starts_hidden_and_compact_hud_is_small(self):
+        self.assertFalse(EchoTraceAgent().show_help)
+        compact = self.agent.draw_hud(self.frame)
+        self.agent.show_help = True
+        full = self.agent.draw_hud(self.frame)
+        self.assertLess(np.count_nonzero(compact), np.count_nonzero(full))
+
+    def test_threaded_pipeline_processes_frames_and_keys(self):
+        frame = self.frame
+
+        class Camera:
+            def read(self):
+                time.sleep(1 / 60)
+                return True, frame.copy()
+
+        source = FrameSource(Camera())
+        source.start()
+        self.agent.pending_keys.append(ord("C"))
+        worker = threading.Thread(target=self.agent.processing_loop, args=(source,))
+        worker.start()
+        deadline = time.perf_counter() + 5
+        while self.agent.output_sequence < 5 and time.perf_counter() < deadline:
+            time.sleep(0.01)
+        self.agent.pending_keys.append(ord("Q"))
+        worker.join(timeout=5)
+        source.stop()
+        self.assertFalse(worker.is_alive())
+        self.assertGreaterEqual(self.agent.output_sequence, 5)
+        self.assertEqual(self.agent.mode, "Neon")
+        self.assertEqual(self.agent.latest_clean.shape, frame.shape)
+        self.assertIsNone(self.agent.worker_error)
+
+    def test_threaded_pipeline_reports_dead_camera(self):
+        class DeadCamera:
+            def read(self):
+                return False, None
+
+        source = FrameSource(DeadCamera())
+        source.start()
+        worker = threading.Thread(target=self.agent.processing_loop, args=(source,))
+        worker.start()
+        worker.join(timeout=10)
+        source.stop()
+        self.assertTrue(self.agent.camera_failed)
+        self.assertFalse(self.agent.running)
+
+    def test_command_line_options(self):
+        args = parse_args(["--camera", "2", "--width", "0", "--preset", "3",
+                           "--no-mirror", "--hud-in-captures", "--flicker-limit", "0",
+                           "--work-width", "480"])
+        agent = build_agent(args)
+        self.assertEqual(agent.camera_index, 2)
+        self.assertEqual(agent.request_size, (0, 720))
+        self.assertEqual(agent.mode, "Rainbow")
+        self.assertFalse(agent.mirror)
+        self.assertTrue(agent.capture_hud)
+        self.assertEqual(agent.flicker_limit, 0)
+        self.assertEqual(agent.work_width, 480)
+        for bad in (["--preset", "9"], ["--flicker-limit", "2"], ["--work-width", "50"]):
+            with self.assertRaises(SystemExit), patch("sys.stderr"):
+                parse_args(bad)
 
 
 if __name__ == "__main__":
