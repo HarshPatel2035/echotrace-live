@@ -1,8 +1,8 @@
 # EchoTrace Live
 
-[![EchoTrace Live demo: Neon, Rainbow Mandala, Fire Vortex and Ghost Time effects](demo/preview.jpg)](demo/echotrace-demo.mp4)
+![EchoTrace Live in action: Neon, Rainbow Mandala, Fire Vortex and audio-reactive effects](demo/echotrace-demo.gif)
 
-**[▶ Watch the 55-second demo](demo/echotrace-demo.mp4)**: all five colour modes, three presets, and the audio-reactive rings. The demo uses a computer-generated scene (a light wand, a hand shape, and a bouncing ball) run through the real EchoTrace effects code, so no one appears on camera.
+**[⬇ Download the full 55-second demo (MP4, 4.6 MB)](https://github.com/HarshPatel2035/echotrace-live/raw/main/demo/echotrace-demo.mp4)**: all five colour modes, three presets, and the audio-reactive rings. The demo uses a computer-generated scene (a light wand, a hand shape, and a bouncing ball) run through the real EchoTrace effects code, so no one appears on camera.
 
 Paint neon light in the air with your webcam. Moving hands, faces, and objects leave glowing echoes that linger and slowly fade. Five live modes combine motion detection, colorful trails, soft bloom, futuristic edges, and a mild vignette.
 
@@ -216,7 +216,7 @@ Implementation references: [MediaPipe Hand Landmarker Python guide](https://deve
 
 ## Demo video
 
-`demo/make_demo.py` renders `demo/echotrace-demo.mp4` without a webcam. It draws a synthetic room scene, feeds each frame through `EchoTraceAgent.process_frame` on a simulated 30 FPS clock, and adds captions. The audio section uses a generated test beat instead of the microphone. It needs `ffmpeg` with H.264 support (on macOS: `brew install ffmpeg`):
+`demo/make_demo.py` renders `demo/echotrace-demo.mp4` without a webcam. It draws a synthetic room scene, feeds each frame through `EchoTraceAgent.process_frame` on a simulated 30 FPS clock, and adds captions. The audio section uses a generated test beat instead of the microphone. The looping highlights GIF at the top of this README (`demo/echotrace-demo.gif`) is cut from that video with `ffmpeg`, because GitHub plays GIFs inline but not video files stored in a repository. The script needs `ffmpeg` with H.264 support (on macOS: `brew install ffmpeg`):
 
 ```bash
 python demo/make_demo.py
